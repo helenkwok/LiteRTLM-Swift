@@ -5,3 +5,7 @@ xcuserdata/
 DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# Rewrap script outputs — regenerable, not vendored from the fork
+Frameworks/LiteRTLM-rewrapped.xcframework/
+Frameworks/GemmaModelConstraintProvider.xcframework/

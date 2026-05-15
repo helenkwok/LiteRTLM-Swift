@@ -1,5 +1,7 @@
 # LiteRTLM-Swift
 
+> **Patched for `expo-litert-lm`** — this fork diverges from `mylovelycodes/LiteRTLM-Swift` upstream. See [PATCHES.md](./PATCHES.md) for the running patch log. Upstream sync cadence: quarterly diff against `upstream/main`.
+
 Swift package for running [LiteRT-LM](https://ai.google.dev/edge/litert/lm) models on iOS. Wraps Google's C API in a clean, async/await Swift interface.
 
 Supports **text generation**, **vision (image understanding)**, **audio (speech/sound understanding)**, and **streaming** with models like **Gemma 4 E2B**.
