@@ -59,6 +59,12 @@ for slice in "${SLICES[@]}"; do
 </dict></plist>
 EOF
     codesign --force --sign - --timestamp=none "$GMCP_FW/GemmaModelConstraintProvider"
+
+    # ---- Fix 2b: patch CLiteRTLM's LC_LOAD_DYLIB to point at the new framework path ----
+    install_name_tool -change \
+      "@rpath/libGemmaModelConstraintProvider.dylib" \
+      "@rpath/GemmaModelConstraintProvider.framework/GemmaModelConstraintProvider" \
+      "$FW/CLiteRTLM"
   fi
 
   # ---- Fix 3: dSYMs ----

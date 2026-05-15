@@ -12,11 +12,15 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "CLiteRTLM",
-            path: "Frameworks/LiteRTLM.xcframework"
+            path: "Frameworks/LiteRTLM-rewrapped.xcframework"
+        ),
+        .binaryTarget(
+            name: "GemmaModelConstraintProvider",
+            path: "Frameworks/GemmaModelConstraintProvider.xcframework"
         ),
         .target(
             name: "LiteRTLMSwift",
-            dependencies: ["CLiteRTLM"],
+            dependencies: ["CLiteRTLM", "GemmaModelConstraintProvider"],
             path: "Sources/LiteRTLMSwift"
         ),
     ]
