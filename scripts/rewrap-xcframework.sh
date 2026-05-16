@@ -450,13 +450,20 @@ TMP_PKG="$(mktemp)"
 TMP_NEW="$(mktemp)"
 printf '%s\n' "$MANAGED_CONTENT" > "$TMP_NEW"
 awk -v new_block_file="$TMP_NEW" '
+  # Insert the new block at the FIRST BEGIN we see. Any additional
+  # BEGIN/END pairs (e.g., from prior corrupted writes) are treated as
+  # stale blocks and consumed without re-emitting. End result is
+  # idempotent: N input blocks collapse to exactly one output block.
   /MANIFEST-MANAGED:BEGIN/ {
-    in_block=1
-    while ((getline line < new_block_file) > 0) print line
-    close(new_block_file)
+    if (!inserted) {
+      while ((getline line < new_block_file) > 0) print line
+      close(new_block_file)
+      inserted = 1
+    }
+    in_block = 1
     next
   }
-  /MANIFEST-MANAGED:END/ { in_block=0; next }
+  /MANIFEST-MANAGED:END/ { in_block = 0; next }
   !in_block { print }
 ' "Package.swift" > "$TMP_PKG"
 mv "$TMP_PKG" "Package.swift"
