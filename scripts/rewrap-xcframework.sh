@@ -440,14 +440,27 @@ for i in $(seq 0 $((count - 1))); do
 done
 MANAGED_CONTENT+="        // MANIFEST-MANAGED:END"
 
-# Use awk to replace the MANIFEST-MANAGED block in Package.swift
+# Splice the MANIFEST-MANAGED block into Package.swift portably.
+# Why not `awk -v new_block="$MANAGED_CONTENT"`: BSD awk on macOS does not
+# accept embedded newlines in `-v` assignments (errors with "newline in
+# string"). GitHub Actions `macos-latest` has the same BSD awk.
+# Strategy: dump the multiline replacement to a temp file, then split
+# Package.swift at the sentinels and stitch head + temp + tail.
 TMP_PKG="$(mktemp)"
-awk -v new_block="$MANAGED_CONTENT" '
-  /MANIFEST-MANAGED:BEGIN/ { in_block=1; print new_block; next }
+TMP_NEW="$(mktemp)"
+printf '%s\n' "$MANAGED_CONTENT" > "$TMP_NEW"
+awk -v new_block_file="$TMP_NEW" '
+  /MANIFEST-MANAGED:BEGIN/ {
+    in_block=1
+    while ((getline line < new_block_file) > 0) print line
+    close(new_block_file)
+    next
+  }
   /MANIFEST-MANAGED:END/ { in_block=0; next }
   !in_block { print }
 ' "Package.swift" > "$TMP_PKG"
 mv "$TMP_PKG" "Package.swift"
+rm -f "$TMP_NEW"
 
 echo "  Package.swift MANIFEST-MANAGED block regenerated"
 
