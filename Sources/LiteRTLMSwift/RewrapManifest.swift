@@ -20,16 +20,16 @@ public enum RewrapManifest {
     }
     public static let schemaVersion = 1
     public static let upstreamVersion = "v0.10.2"
-    public static let tag = "v0.10.2+rewrap.4"
-    public static let forkSHA = "154649b4302ff9bb1ec5ef5f60567928cbbb4aaf"
+    public static let tag = "v0.10.2+rewrap.5"
+    public static let forkSHA = "9005fbcbfe6b79d1d604d4cb49386aa0dde74689"
     public static let entries: [Entry] = [
         Entry(xcframeworkName: "CLiteRTLM.xcframework",
               swiftTargetName: "CLiteRTLM",
               zipSHA256: "ba2d0c9a6b2a44fd447890b58b9220cdddf14356cf64c3dbd6ce77c94d3dfc1a",
-              releaseAssetURL: "https://github.com/helenkwok/LiteRTLM-Swift/releases/download/v0.10.2+rewrap.4/CLiteRTLM-v0.10.2+rewrap.4.xcframework.zip"),
+              releaseAssetURL: "https://github.com/helenkwok/LiteRTLM-Swift/releases/download/v0.10.2+rewrap.5/CLiteRTLM-v0.10.2+rewrap.5.xcframework.zip"),
         Entry(xcframeworkName: "GemmaModelConstraintProvider.xcframework",
               swiftTargetName: "GemmaModelConstraintProvider",
               zipSHA256: "58f2db564c22efc55dd6a6596dae83e4b044036699347befdebda39648e4a6f4",
-              releaseAssetURL: "https://github.com/helenkwok/LiteRTLM-Swift/releases/download/v0.10.2+rewrap.4/GemmaModelConstraintProvider-v0.10.2+rewrap.4.xcframework.zip"),
+              releaseAssetURL: "https://github.com/helenkwok/LiteRTLM-Swift/releases/download/v0.10.2+rewrap.5/GemmaModelConstraintProvider-v0.10.2+rewrap.5.xcframework.zip"),
     ]
 }
