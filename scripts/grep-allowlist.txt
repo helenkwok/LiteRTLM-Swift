@@ -1,0 +1,13 @@
+# Layer B grep allowlist — regex-per-line (ERE).
+# Lines starting with '#' are comments; empty lines are ignored.
+# These patterns exempt known-legitimate references to raw LiteRTLM.xcframework
+# from the grep gate that would otherwise reject them.
+#
+# Format: each pattern is matched against grep -nE output (path:linenum:content).
+# A hit that matches ANY pattern here is considered allowed and excluded from failures.
+
+# The rewrap script reads the raw upstream xcframework as its input
+^scripts/rewrap-xcframework\.sh:
+
+# The allowlist file itself documents what we're guarding against
+^scripts/grep-allowlist\.txt:
