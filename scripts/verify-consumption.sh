@@ -169,7 +169,7 @@ let package = Package(
   name: "Consumer",
   platforms: [.iOS(.v17), .macOS(.v14)],
   dependencies: [
-    .package(url: "https://github.com/helenkwok/LiteRTLM-Swift", exact: .init(stringLiteral: "$RELEASE_TAG"))
+    .package(url: "https://github.com/helenkwok/LiteRTLM-Swift", revision: "$RELEASE_TAG")
   ],
   targets: [
     .target(
