@@ -1,0 +1,97 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*+rewrap.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history + tags
+
+      - name: Select Xcode
+        # Pin to Xcode 16 (latest stable on macos-latest as of 2026-05).
+        # Update this if .tool-versions is added to the repo.
+        run: |
+          XCODE_PATH="/Applications/Xcode_16.app"
+          if [ -d "$XCODE_PATH" ]; then
+            sudo xcode-select -s "$XCODE_PATH"
+          else
+            echo "Xcode_16.app not found; using default Xcode on runner"
+            xcodebuild -version
+          fi
+
+      - name: Install jq
+        run: which jq || brew install jq
+
+      - name: Run rewrap script
+        # NOTE: set -x is NOT used here — avoids leaking any environment into logs.
+        # GITHUB_TOKEN is handled separately in the release step below (not echoed).
+        run: ./scripts/rewrap-xcframework.sh --tag "${GITHUB_REF_NAME}"
+
+      - name: Run local verify against just-built artifact
+        # Verifies Layer A (path-mode local build), Layer B, and Layer C before publishing.
+        # URL-mode verify runs AFTER the Release is published (below).
+        run: ./scripts/verify-consumption.sh
+
+      - name: Generate release notes
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          UPSTREAM_VERSION=$(jq -r .upstream_version rewrap-manifest.json)
+          REWRAP_ITER=$(jq -r .rewrap_iteration rewrap-manifest.json)
+          FORK_SHA=$(jq -r .fork_sha rewrap-manifest.json)
+          BUILT_AT=$(jq -r .built_at rewrap-manifest.json)
+
+          cat > RELEASE_NOTES.md <<NOTES_EOF
+          ## Rewrapped LiteRTLM xcframeworks — ${TAG}
+
+          Upstream version: ${UPSTREAM_VERSION}
+          Rewrap iteration: ${REWRAP_ITER}
+          Fork SHA: ${FORK_SHA}
+          Built at: ${BUILT_AT}
+
+          ### Assets
+          - \`LiteRTLM-rewrapped-${TAG}.xcframework.zip\` — rewrapped CLiteRTLM xcframework
+          - \`GemmaModelConstraintProvider-${TAG}.xcframework.zip\` — GemmaModelConstraintProvider xcframework
+          - \`rewrap-manifest.json\` — trust anchor; includes sha256 for both zips
+
+          ### Checksums (from rewrap-manifest.json)
+          $(jq -r '.xcframeworks[] | "- `\(.zip_filename)`: `\(.zip_sha256)`"' rewrap-manifest.json)
+
+          ### Consuming via SPM
+          Add to your Package.swift dependencies:
+          \`\`\`swift
+          .package(url: "https://github.com/helenkwok/LiteRTLM-Swift", exact: "${TAG}")
+          \`\`\`
+
+          ### Consuming via CocoaPods (expo-litert-lm)
+          Run: \`make sync TAG=${TAG}\` in the expo-litert-lm repo.
+          NOTES_EOF
+
+      - name: Create Release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # Note: GH_TOKEN is consumed by gh CLI; not echoed (set -x is NOT active).
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes-file RELEASE_NOTES.md \
+            "LiteRTLM-rewrapped-${TAG}.xcframework.zip" \
+            "GemmaModelConstraintProvider-${TAG}.xcframework.zip" \
+            rewrap-manifest.json
+
+      - name: Post-release URL-mode verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Re-runs Layer A against the JUST-PUBLISHED Release URLs (not local path).
+        # This catches bugs where the Release upload succeeded but binaryTarget URLs
+        # don't resolve correctly (e.g. URL encoding of '+' in tag name).
+        run: ./scripts/verify-consumption.sh --url-mode
