@@ -10,6 +10,8 @@
 #   --url-mode   Layer A uses .package(url:, from:) instead of .package(path:).
 #                Used by release.yml post-release verification step.
 #                Requires the JUST-PUBLISHED Release to be publicly accessible.
+#   --skip-layer-a
+#                Run only Layer B/C. Used before release assets exist.
 #
 # NOTE ON LAYER A:
 #   - Locally (without --url-mode): uses path-mode binaryTarget since the Release
@@ -24,9 +26,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 URL_MODE=false
+SKIP_LAYER_A=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --url-mode) URL_MODE=true; shift ;;
+    --skip-layer-a) SKIP_LAYER_A=true; shift ;;
     *) echo "Unknown flag: $1" >&2; exit 1 ;;
   esac
 done
@@ -55,7 +59,7 @@ if [ -s "$ACTIVE_PATTERNS_FILE" ]; then
     --include='*.swift' --include='*.json' --include='*.podspec' \
     --include='*.rb' --include='*.sh' --include='*.txt' \
     . 2>/dev/null \
-    | grep -v '\-rewrapped' \
+    | grep -vE '(CLiteRTLM|LiteRTLM-rewrapped)' \
     | grep -E -v -f "$ACTIVE_PATTERNS_FILE" || true)
 else
   # Empty or all-comment allowlist — no exclusions
@@ -63,7 +67,7 @@ else
     --include='*.swift' --include='*.json' --include='*.podspec' \
     --include='*.rb' --include='*.sh' --include='*.txt' \
     . 2>/dev/null \
-    | grep -v '\-rewrapped' || true)
+    | grep -vE '(CLiteRTLM|LiteRTLM-rewrapped)' || true)
 fi
 set -e
 
@@ -141,19 +145,22 @@ echo "  Mode: $([ "$URL_MODE" = true ] && echo 'URL-mode (post-release)' || echo
 echo "  NOTE: URL-mode (--url-mode flag) tests against a published GitHub Release."
 echo "        Path-mode tests the module builds correctly from a local consumer."
 
-TMPDIR_A=$(mktemp -d)
-trap "rm -rf $TMPDIR_A" EXIT
+if [ "$SKIP_LAYER_A" = true ]; then
+  echo "  SKIP: --skip-layer-a requested"
+else
+  TMPDIR_A=$(mktemp -d)
+  trap "rm -rf $TMPDIR_A" EXIT
 
-cd "$TMPDIR_A"
-mkdir consumer && cd consumer
+  cd "$TMPDIR_A"
+  mkdir consumer && cd consumer
 
-if [ "$URL_MODE" = true ]; then
-  if [ ! -f "$MANIFEST" ]; then
-    echo "FAIL: --url-mode requires rewrap-manifest.json (run from repo root)" >&2
-    ERRORS=$((ERRORS + 1))
-  else
-    RELEASE_TAG=$(jq -r .tag "$MANIFEST")
-    cat > Package.swift <<PKG_EOF
+  if [ "$URL_MODE" = true ]; then
+    if [ ! -f "$MANIFEST" ]; then
+      echo "FAIL: --url-mode requires rewrap-manifest.json (run from repo root)" >&2
+      ERRORS=$((ERRORS + 1))
+    else
+      RELEASE_TAG=$(jq -r .tag "$MANIFEST")
+      cat > Package.swift <<PKG_EOF
 // swift-tools-version:5.9
 import PackageDescription
 let package = Package(
@@ -170,9 +177,9 @@ let package = Package(
   ]
 )
 PKG_EOF
-  fi
-else
-  cat > Package.swift <<PKG_EOF
+    fi
+  else
+    cat > Package.swift <<PKG_EOF
 // swift-tools-version:5.9
 import PackageDescription
 let package = Package(
@@ -189,10 +196,10 @@ let package = Package(
   ]
 )
 PKG_EOF
-fi
+  fi
 
-mkdir -p Sources/Consumer
-cat > Sources/Consumer/main.swift <<'SWIFT_EOF'
+  mkdir -p Sources/Consumer
+  cat > Sources/Consumer/main.swift <<'SWIFT_EOF'
 import LiteRTLMSwift
 // Verify RewrapManifest compiles and is accessible
 let tag = RewrapManifest.tag
@@ -200,18 +207,19 @@ let entries = RewrapManifest.entries
 print("LiteRTLMSwift module OK — tag: \(tag), entries: \(entries.count)")
 SWIFT_EOF
 
-set +e
-swift build 2>&1
-LAYER_A_EXIT=$?
-set -e
+  set +e
+  swift build 2>&1
+  LAYER_A_EXIT=$?
+  set -e
 
-cd "$REPO_ROOT"
+  cd "$REPO_ROOT"
 
-if [ "$LAYER_A_EXIT" -ne 0 ]; then
-  echo "FAIL: fresh-checkout swift build exited $LAYER_A_EXIT" >&2
-  ERRORS=$((ERRORS + 1))
-else
-  echo "  PASS: fresh-checkout swift build succeeded"
+  if [ "$LAYER_A_EXIT" -ne 0 ]; then
+    echo "FAIL: fresh-checkout swift build exited $LAYER_A_EXIT" >&2
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "  PASS: fresh-checkout swift build succeeded"
+  fi
 fi
 
 # =============================================================================
@@ -219,7 +227,11 @@ fi
 # =============================================================================
 echo ""
 if [ "$ERRORS" -eq 0 ]; then
-  echo "==> ALL LAYERS PASSED (A + B + C)"
+  if [ "$SKIP_LAYER_A" = true ]; then
+    echo "==> REQUESTED LAYERS PASSED (B + C; Layer A skipped)"
+  else
+    echo "==> ALL LAYERS PASSED (A + B + C)"
+  fi
   exit 0
 else
   echo "==> FAILED: $ERRORS layer(s) failed" >&2

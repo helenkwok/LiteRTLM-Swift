@@ -10,6 +10,6 @@ release:
 	gh release create $(TAG) \
 		--title "$(TAG)" \
 		--notes "Rewrapped LiteRTLM xcframework for tag $(TAG). See rewrap-manifest.json for sha256 values." \
-		"LiteRTLM-rewrapped-$(TAG).xcframework.zip" \
+		"CLiteRTLM-$(TAG).xcframework.zip" \
 		"GemmaModelConstraintProvider-$(TAG).xcframework.zip" \
 		rewrap-manifest.json

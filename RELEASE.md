@@ -73,7 +73,7 @@ After any release (CI or escape valve), verify:
 
 - [ ] Release URL is accessible: `gh release view v0.7.3+rewrap.1 --repo helenkwok/LiteRTLM-Swift`
 - [ ] Both xcframework zips listed: `gh release view v0.7.3+rewrap.1 --repo helenkwok/LiteRTLM-Swift --json assets --jq '.assets[].name'`
-  - Must include: `LiteRTLM-rewrapped-v0.7.3+rewrap.1.xcframework.zip`
+  - Must include: `CLiteRTLM-v0.7.3+rewrap.1.xcframework.zip`
   - Must include: `GemmaModelConstraintProvider-v0.7.3+rewrap.1.xcframework.zip`
   - Must include: `rewrap-manifest.json`
 - [ ] Manifest is valid:
@@ -86,7 +86,7 @@ After any release (CI or escape valve), verify:
   ```bash
   gh release download v0.7.3+rewrap.1 --repo helenkwok/LiteRTLM-Swift --pattern '*.zip' -D /tmp/verify-rel
   expected=$(jq -r '.xcframeworks[0].zip_sha256' /tmp/verify-rel/rewrap-manifest.json)
-  actual=$(shasum -a 256 /tmp/verify-rel/LiteRTLM-rewrapped-v0.7.3+rewrap.1.xcframework.zip | awk '{print $1}')
+  actual=$(shasum -a 256 /tmp/verify-rel/CLiteRTLM-v0.7.3+rewrap.1.xcframework.zip | awk '{print $1}')
   [ "$actual" = "$expected" ] && echo "SHA OK" || echo "SHA MISMATCH"
   ```
 - [ ] Fresh-checkout `swift build` succeeds:

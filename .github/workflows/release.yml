@@ -41,9 +41,10 @@ jobs:
         run: ./scripts/rewrap-xcframework.sh --tag "${GITHUB_REF_NAME}"
 
       - name: Run local verify against just-built artifact
-        # Verifies Layer A (path-mode local build), Layer B, and Layer C before publishing.
+        # Verifies Layer B/C before publishing. URL-mode Layer A runs after
+        # release upload, because binaryTarget URLs do not exist until then.
         # URL-mode verify runs AFTER the Release is published (below).
-        run: ./scripts/verify-consumption.sh
+        run: ./scripts/verify-consumption.sh --skip-layer-a
 
       - name: Generate release notes
         run: |
@@ -62,7 +63,7 @@ jobs:
           Built at: ${BUILT_AT}
 
           ### Assets
-          - \`LiteRTLM-rewrapped-${TAG}.xcframework.zip\` — rewrapped CLiteRTLM xcframework
+          - \`CLiteRTLM-${TAG}.xcframework.zip\` — rewrapped CLiteRTLM xcframework
           - \`GemmaModelConstraintProvider-${TAG}.xcframework.zip\` — GemmaModelConstraintProvider xcframework
           - \`rewrap-manifest.json\` — trust anchor; includes sha256 for both zips
 
@@ -88,7 +89,7 @@ jobs:
           gh release create "${TAG}" \
             --title "${TAG}" \
             --notes-file RELEASE_NOTES.md \
-            "LiteRTLM-rewrapped-${TAG}.xcframework.zip" \
+            "CLiteRTLM-${TAG}.xcframework.zip" \
             "GemmaModelConstraintProvider-${TAG}.xcframework.zip" \
             rewrap-manifest.json
 
