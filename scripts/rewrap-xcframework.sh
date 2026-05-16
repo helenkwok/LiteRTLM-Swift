@@ -262,16 +262,22 @@ _collect_install_names "${XCF_PATHS[0]}" INSTALL_NAMES_0
 _collect_install_names "${XCF_PATHS[1]}" INSTALL_NAMES_1
 
 # ---- Build install_names JSON arrays (sorted for determinism) ----
+# Bash 3.2 compatible: namerefs (local -n) require bash 4.3+, but macOS ships
+# 3.2 and GitHub Actions macos-latest is the same. Use indirect array
+# expansion via eval instead.
 _build_json_array() {
   local arr_name="$1"
-  local -n arr="$arr_name"
-  if [ "${#arr[@]}" -eq 0 ]; then
+  # Snapshot the array's contents into a local copy via eval (3.2 safe).
+  local items=()
+  eval "items=( \"\${${arr_name}[@]+\"\${${arr_name}[@]}\"}\" )"
+  if [ "${#items[@]}" -eq 0 ]; then
     echo "[]"
     return
   fi
   local json="["
   local first=true
-  for item in "${arr[@]}"; do
+  local item
+  for item in "${items[@]}"; do
     [ "$first" = true ] && first=false || json+=","
     json+="\"$item\""
   done
