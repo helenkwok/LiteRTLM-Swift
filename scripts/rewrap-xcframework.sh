@@ -200,35 +200,63 @@ declare -a XCF_SWIFT_TARGETS=("LiteRTLMBinary" "GemmaModelConstraintProviderBina
 declare -a ZIP_FILENAMES=()
 declare -a ZIP_SHA256S=()
 
-for i in 0 1; do
-  xcf_name="${XCF_NAMES[$i]}"
-  xcf_path="${XCF_PATHS[$i]}"
-  swift_target="${XCF_SWIFT_TARGETS[$i]}"
-  zip_filename="${xcf_name%.xcframework}-${TAG}.xcframework.zip"
-
-  if [ ! -d "$xcf_path" ]; then
-    echo "FAIL: xcframework not found at $xcf_path — cannot zip (run without --regenerate-only first)" >&2
-    exit 1
+# If --regenerate-only AND an existing manifest already lists this tag's
+# zip filenames + 64-hex shas, trust them as-is and skip re-zipping. This
+# is the "re-align local state to a published Release" path: download the
+# Release's manifest, then run this script with --regenerate-only --tag X
+# to rebuild Package.swift + RewrapManifest.swift against the Release's
+# frozen SHAs without producing new (non-deterministic) zips.
+TRUST_MANIFEST=false
+TRUST_MANIFEST_FILE="rewrap-manifest.json"
+if [ "$REGENERATE_ONLY" = true ] && [ -f "$TRUST_MANIFEST_FILE" ]; then
+  manifest_tag=$(jq -r '.tag // empty' "$TRUST_MANIFEST_FILE" 2>/dev/null || true)
+  if [ "$manifest_tag" = "$TAG" ]; then
+    candidate_sha_0=$(jq -r '.xcframeworks[0].zip_sha256 // empty' "$TRUST_MANIFEST_FILE")
+    candidate_sha_1=$(jq -r '.xcframeworks[1].zip_sha256 // empty' "$TRUST_MANIFEST_FILE")
+    if [[ "$candidate_sha_0" =~ ^[0-9a-f]{64}$ ]] && [[ "$candidate_sha_1" =~ ^[0-9a-f]{64}$ ]]; then
+      TRUST_MANIFEST=true
+    fi
   fi
+fi
 
-  # Zip from the parent directory so the xcframework name is the zip root
-  xcf_dir="$(dirname "$xcf_path")"
-  xcf_basename="$(basename "$xcf_path")"
-  (cd "$xcf_dir" && zip -qr "$OLDPWD/$zip_filename" "$xcf_basename")
+if [ "$TRUST_MANIFEST" = true ]; then
+  echo "==> --regenerate-only with matching existing manifest for $TAG — trusting manifest SHAs"
+  for i in 0 1; do
+    ZIP_FILENAMES+=("$(jq -r ".xcframeworks[$i].zip_filename" "$TRUST_MANIFEST_FILE")")
+    ZIP_SHA256S+=("$(jq -r ".xcframeworks[$i].zip_sha256" "$TRUST_MANIFEST_FILE")")
+    echo "  ${XCF_NAMES[$i]} -> ${ZIP_FILENAMES[$i]} (sha256: ${ZIP_SHA256S[$i]:0:16}... from manifest)"
+  done
+else
+  for i in 0 1; do
+    xcf_name="${XCF_NAMES[$i]}"
+    xcf_path="${XCF_PATHS[$i]}"
+    swift_target="${XCF_SWIFT_TARGETS[$i]}"
+    zip_filename="${xcf_name%.xcframework}-${TAG}.xcframework.zip"
 
-  zip_sha=$(shasum -a 256 "$zip_filename" | awk '{print $1}')
+    if [ ! -d "$xcf_path" ]; then
+      echo "FAIL: xcframework not found at $xcf_path — cannot zip (run without --regenerate-only first)" >&2
+      exit 1
+    fi
 
-  # Hard validation: 64-hex non-empty
-  if ! [[ "$zip_sha" =~ ^[0-9a-f]{64}$ ]]; then
-    echo "FAIL: refusing to write manifest with placeholder/empty sha256 for $xcf_name — got: '$zip_sha'" >&2
-    exit 1
-  fi
+    # Zip from the parent directory so the xcframework name is the zip root
+    xcf_dir="$(dirname "$xcf_path")"
+    xcf_basename="$(basename "$xcf_path")"
+    (cd "$xcf_dir" && zip -qr "$OLDPWD/$zip_filename" "$xcf_basename")
 
-  ZIP_FILENAMES+=("$zip_filename")
-  ZIP_SHA256S+=("$zip_sha")
+    zip_sha=$(shasum -a 256 "$zip_filename" | awk '{print $1}')
 
-  echo "  $xcf_name -> $zip_filename (sha256: ${zip_sha:0:16}...)"
-done
+    # Hard validation: 64-hex non-empty
+    if ! [[ "$zip_sha" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "FAIL: refusing to write manifest with placeholder/empty sha256 for $xcf_name — got: '$zip_sha'" >&2
+      exit 1
+    fi
+
+    ZIP_FILENAMES+=("$zip_filename")
+    ZIP_SHA256S+=("$zip_sha")
+
+    echo "  $xcf_name -> $zip_filename (sha256: ${zip_sha:0:16}...)"
+  done
+fi
 
 # ---- Collect install_names per xcframework ----
 declare -a INSTALL_NAMES_0=()
@@ -351,20 +379,27 @@ jq -n \
 echo "  rewrap-manifest.json written"
 
 # ---- Post-write sha256 validation ----
-# For each entry in the just-written manifest, re-derive zip_sha256 from the zip on disk
-echo "==> Post-write sha256 validation"
+# For each entry in the just-written manifest, re-derive zip_sha256 from the zip on disk.
+# Skip when TRUST_MANIFEST=true: in that path we never produced zips locally — we
+# trusted the manifest's SHAs from a published Release, so there's nothing on disk
+# to re-hash. The trust source (the downloaded manifest itself) is authoritative.
 count=$(jq '.xcframeworks | length' "$MANIFEST_PATH")
-for i in $(seq 0 $((count - 1))); do
-  name=$(jq -r ".xcframeworks[$i].name" "$MANIFEST_PATH")
-  zip_fn=$(jq -r ".xcframeworks[$i].zip_filename" "$MANIFEST_PATH")
-  manifest_sha=$(jq -r ".xcframeworks[$i].zip_sha256" "$MANIFEST_PATH")
-  disk_sha=$(shasum -a 256 "$zip_fn" | awk '{print $1}')
-  if [ "$disk_sha" != "$manifest_sha" ]; then
-    echo "FAIL: post-write sha256 mismatch for $name — manifest=$manifest_sha disk=$disk_sha" >&2
-    exit 1
-  fi
-  echo "  ✓ $name sha256 verified"
-done
+if [ "$TRUST_MANIFEST" = true ]; then
+  echo "==> Post-write sha256 validation skipped (--regenerate-only trusted existing manifest; no local zips on disk)"
+else
+  echo "==> Post-write sha256 validation"
+  for i in $(seq 0 $((count - 1))); do
+    name=$(jq -r ".xcframeworks[$i].name" "$MANIFEST_PATH")
+    zip_fn=$(jq -r ".xcframeworks[$i].zip_filename" "$MANIFEST_PATH")
+    manifest_sha=$(jq -r ".xcframeworks[$i].zip_sha256" "$MANIFEST_PATH")
+    disk_sha=$(shasum -a 256 "$zip_fn" | awk '{print $1}')
+    if [ "$disk_sha" != "$manifest_sha" ]; then
+      echo "FAIL: post-write sha256 mismatch for $name — manifest=$manifest_sha disk=$disk_sha" >&2
+      exit 1
+    fi
+    echo "  ✓ $name sha256 verified"
+  done
+fi
 
 # ---- Regenerate Sources/LiteRTLMSwift/RewrapManifest.swift ----
 echo "==> Regenerating Sources/LiteRTLMSwift/RewrapManifest.swift"
@@ -450,11 +485,17 @@ TMP_PKG="$(mktemp)"
 TMP_NEW="$(mktemp)"
 printf '%s\n' "$MANAGED_CONTENT" > "$TMP_NEW"
 awk -v new_block_file="$TMP_NEW" '
-  # Insert the new block at the FIRST BEGIN we see. Any additional
-  # BEGIN/END pairs (e.g., from prior corrupted writes) are treated as
-  # stale blocks and consumed without re-emitting. End result is
-  # idempotent: N input blocks collapse to exactly one output block.
-  /MANIFEST-MANAGED:BEGIN/ {
+  # Match ONLY the real sentinel lines, not docstring mentions of the
+  # phrase. The real sentinels are emitted by this script with exactly
+  # 8 leading spaces (matching the indent inside `targets: [`). Docstring
+  # references in the file header start with `//` at column 0 and would
+  # otherwise be eaten by a permissive regex — that corrupts the splice
+  # and strips the real binaryTargets out of the targets[] array.
+  #
+  # Insert the new block at the FIRST real BEGIN. Any additional
+  # BEGIN/END pairs from prior corrupted writes are consumed without
+  # re-emitting (idempotent: N stale blocks collapse to 1 fresh block).
+  /^[[:space:]]+\/\/ MANIFEST-MANAGED:BEGIN/ {
     if (!inserted) {
       while ((getline line < new_block_file) > 0) print line
       close(new_block_file)
@@ -463,7 +504,7 @@ awk -v new_block_file="$TMP_NEW" '
     in_block = 1
     next
   }
-  /MANIFEST-MANAGED:END/ { in_block = 0; next }
+  /^[[:space:]]+\/\/ MANIFEST-MANAGED:END/ { in_block = 0; next }
   !in_block { print }
 ' "Package.swift" > "$TMP_PKG"
 mv "$TMP_PKG" "Package.swift"
@@ -473,7 +514,7 @@ echo "  Package.swift MANIFEST-MANAGED block regenerated"
 
 # ---- Post-write Package.swift validation ----
 # Count binaryTarget entries inside the managed block
-managed_block=$(awk '/MANIFEST-MANAGED:BEGIN/,/MANIFEST-MANAGED:END/' "Package.swift")
+managed_block=$(awk '/^[[:space:]]+\/\/ MANIFEST-MANAGED:BEGIN/,/^[[:space:]]+\/\/ MANIFEST-MANAGED:END/' "Package.swift")
 binary_target_count=$(echo "$managed_block" | grep -c '\.binaryTarget(' || true)
 if [ "$binary_target_count" -ne 2 ]; then
   echo "FAIL: Package.swift managed block has $binary_target_count binaryTarget entries, expected 2" >&2

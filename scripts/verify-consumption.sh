@@ -88,99 +88,48 @@ if [ ! -f "$MANIFEST" ]; then
   echo "FAIL: rewrap-manifest.json not found — run scripts/rewrap-xcframework.sh --tag <tag> first" >&2
   ERRORS=$((ERRORS + 1))
 else
-  # Backup current generated files
-  PKG_BAK="$(mktemp)"
-  SWIFT_BAK="$(mktemp)"
-  MANIFEST_BAK="$(mktemp)"
-
-  cp "Package.swift" "$PKG_BAK"
-  cp "$SWIFT_FILE" "$SWIFT_BAK" 2>/dev/null || true
-  cp "$MANIFEST" "$MANIFEST_BAK"
-
-  # Re-regenerate from the existing manifest (fast path via --regenerate-only)
-  # This re-derives all three outputs from the existing xcframeworks on disk.
-  set +e
-  "$SCRIPT_DIR/generate-package-manifest.sh" 2>&1
-  REGEN_EXIT=$?
-  set -e
-
-  if [ "$REGEN_EXIT" -ne 0 ]; then
-    echo "FAIL: generate-package-manifest.sh exited $REGEN_EXIT" >&2
-    # Restore originals
-    cp "$PKG_BAK" "Package.swift"
-    cp "$SWIFT_BAK" "$SWIFT_FILE" 2>/dev/null || true
-    cp "$MANIFEST_BAK" "$MANIFEST"
+  # Drift detection is content-based, not regen-based: assert that each manifest
+  # xcframework entry's checksum + URL + target name appears verbatim in
+  # Package.swift's MANIFEST-MANAGED block. This catches the failure mode the
+  # plan is built to prevent ("rewrap landed but Package.swift never updated")
+  # without needing a clean git tree or a regen-and-diff cycle that is fragile
+  # against timestamp + git-describe-dirty drift.
+  #
+  # If the manifest entries are reflected in Package.swift, there is no drift.
+  # If not, drift is concrete and the diff is meaningful.
+  managed_block=$(awk '/^[[:space:]]+\/\/ MANIFEST-MANAGED:BEGIN/,/^[[:space:]]+\/\/ MANIFEST-MANAGED:END/' "Package.swift")
+  xcf_count=$(jq '.xcframeworks | length' "$MANIFEST")
+  if [ "$xcf_count" -lt 2 ]; then
+    echo "FAIL: manifest.xcframeworks has $xcf_count entries, expected >=2" >&2
     ERRORS=$((ERRORS + 1))
   else
-    DRIFT=0
-
-    if ! diff -q "Package.swift" "$PKG_BAK" > /dev/null 2>&1; then
-      echo "FAIL: Package.swift drift — managed block does not match manifest" >&2
-      diff "$PKG_BAK" "Package.swift" >&2 || true
-      DRIFT=1
-    fi
-
-    if [ -f "$SWIFT_BAK" ] && ! diff -q "$SWIFT_FILE" "$SWIFT_BAK" > /dev/null 2>&1; then
-      echo "FAIL: RewrapManifest.swift drift" >&2
-      diff "$SWIFT_BAK" "$SWIFT_FILE" >&2 || true
-      DRIFT=1
-    fi
-
-    if ! diff -q "$MANIFEST" "$MANIFEST_BAK" > /dev/null 2>&1; then
-      echo "FAIL: rewrap-manifest.json drift" >&2
-      diff "$MANIFEST_BAK" "$MANIFEST" >&2 || true
-      DRIFT=1
-    fi
-
-    # Restore originals after comparison (we verify drift, not replace)
-    cp "$PKG_BAK" "Package.swift"
-    cp "$SWIFT_BAK" "$SWIFT_FILE" 2>/dev/null || true
-    cp "$MANIFEST_BAK" "$MANIFEST"
-
-    if [ "$DRIFT" -ne 0 ]; then
-      ERRORS=$((ERRORS + DRIFT))
-    else
-      echo "  PASS: no drift between manifest, RewrapManifest.swift, and Package.swift"
-    fi
-
-    # Per-xcframework checksum cross-check: both checksums + urls + target names
-    # must appear verbatim in Package.swift's MANIFEST-MANAGED block.
-    managed_block=$(awk '/MANIFEST-MANAGED:BEGIN/,/MANIFEST-MANAGED:END/' "Package.swift")
-    xcf_count=$(jq '.xcframeworks | length' "$MANIFEST")
-    if [ "$xcf_count" -lt 2 ]; then
-      echo "FAIL: manifest.xcframeworks has $xcf_count entries, expected >=2" >&2
-      ERRORS=$((ERRORS + 1))
-    else
-      echo "  Checking $xcf_count xcframework entries in managed block..."
-      layer_c_ok=true
-      while IFS=$'\t' read -r tgt sha url; do
-        if ! echo "$managed_block" | grep -qF "\"$sha\""; then
-          echo "FAIL: Package.swift managed block missing checksum $sha for $tgt" >&2
-          layer_c_ok=false
-        fi
-        if ! echo "$managed_block" | grep -qF "\"$url\""; then
-          echo "FAIL: Package.swift managed block missing url $url for $tgt" >&2
-          layer_c_ok=false
-        fi
-        if ! echo "$managed_block" | grep -qF "\"$tgt\""; then
-          echo "FAIL: Package.swift managed block missing target name $tgt" >&2
-          layer_c_ok=false
-        fi
-        if ! [[ "$sha" =~ ^[0-9a-f]{64}$ ]]; then
-          echo "FAIL: manifest sha for $tgt is not 64-hex: $sha" >&2
-          layer_c_ok=false
-        fi
-      done < <(jq -r '.xcframeworks[] | [.swift_target_name, .zip_sha256, .release_asset_url] | @tsv' "$MANIFEST")
-
-      if [ "$layer_c_ok" = true ]; then
-        echo "  PASS: all $xcf_count xcframework checksums + urls + target names present in managed block"
-      else
-        ERRORS=$((ERRORS + 1))
+    echo "  Checking $xcf_count xcframework entries in managed block..."
+    layer_c_ok=true
+    while IFS=$'\t' read -r tgt sha url; do
+      if ! echo "$managed_block" | grep -qF "\"$sha\""; then
+        echo "FAIL: Package.swift managed block missing checksum $sha for $tgt" >&2
+        layer_c_ok=false
       fi
+      if ! echo "$managed_block" | grep -qF "\"$url\""; then
+        echo "FAIL: Package.swift managed block missing url $url for $tgt" >&2
+        layer_c_ok=false
+      fi
+      if ! echo "$managed_block" | grep -qF "\"$tgt\""; then
+        echo "FAIL: Package.swift managed block missing target name $tgt" >&2
+        layer_c_ok=false
+      fi
+      if ! [[ "$sha" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "FAIL: manifest sha for $tgt is not 64-hex: $sha" >&2
+        layer_c_ok=false
+      fi
+    done < <(jq -r '.xcframeworks[] | [.swift_target_name, .zip_sha256, .release_asset_url] | @tsv' "$MANIFEST")
+
+    if [ "$layer_c_ok" = true ]; then
+      echo "  PASS: all $xcf_count xcframework checksums + urls + target names present in managed block"
+    else
+      ERRORS=$((ERRORS + 1))
     fi
   fi
-
-  rm -f "$PKG_BAK" "$SWIFT_BAK" "$MANIFEST_BAK"
 fi
 
 # =============================================================================
@@ -209,7 +158,7 @@ if [ "$URL_MODE" = true ]; then
 import PackageDescription
 let package = Package(
   name: "Consumer",
-  platforms: [.iOS(.v17)],
+  platforms: [.iOS(.v17), .macOS(.v14)],
   dependencies: [
     .package(url: "https://github.com/helenkwok/LiteRTLM-Swift", exact: .init(stringLiteral: "$RELEASE_TAG"))
   ],
@@ -228,7 +177,7 @@ else
 import PackageDescription
 let package = Package(
   name: "Consumer",
-  platforms: [.iOS(.v17)],
+  platforms: [.iOS(.v17), .macOS(.v14)],
   dependencies: [
     .package(path: "$REPO_ROOT")
   ],

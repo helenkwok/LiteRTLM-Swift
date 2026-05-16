@@ -3,11 +3,24 @@
 # These patterns exempt known-legitimate references to raw LiteRTLM.xcframework
 # from the grep gate that would otherwise reject them.
 #
-# Format: each pattern is matched against grep -nE output (path:linenum:content).
-# A hit that matches ANY pattern here is considered allowed and excluded from failures.
+# Format: each pattern is matched against grep -rnE output, which prepends
+# `./` to every path. Anchor with `^\./` to match the path component.
 
 # The rewrap script reads the raw upstream xcframework as its input
-^scripts/rewrap-xcframework\.sh:
+^\./scripts/rewrap-xcframework\.sh:
+
+# The build script produces the raw upstream xcframework (output path)
+^\./scripts/build-xcframework\.sh:
+
+# The verify script itself prints messages mentioning the raw filename
+^\./scripts/verify-consumption\.sh:
 
 # The allowlist file itself documents what we're guarding against
-^scripts/grep-allowlist\.txt:
+^\./scripts/grep-allowlist\.txt:
+
+# PATCHES.md and README.md narrate the rewrap history and reference raw upstream
+^\./PATCHES\.md:
+^\./README\.md:
+
+# RELEASE.md walks the tag-cut workflow which talks about the raw input
+^\./RELEASE\.md:
