@@ -200,7 +200,7 @@ echo "==> Zipping xcframeworks for tag $TAG"
 # Map xcframework output paths to their names and target names
 declare -a XCF_NAMES=("CLiteRTLM.xcframework" "GemmaModelConstraintProvider.xcframework")
 declare -a XCF_PATHS=("$OUT_XCF" "$GMCP_OUT")
-declare -a XCF_SWIFT_TARGETS=("LiteRTLMBinary" "GemmaModelConstraintProviderBinary")
+declare -a XCF_SWIFT_TARGETS=("CLiteRTLM" "GemmaModelConstraintProvider")
 
 declare -a ZIP_FILENAMES=()
 declare -a ZIP_SHA256S=()

@@ -18,6 +18,8 @@
 #     may not exist yet during development. This proves the Swift module resolves.
 #   - In CI (release.yml final step, --url-mode): uses URL-mode against the just-
 #     published GitHub Release. This is the definitive end-to-end proof.
+#   - The binary artifacts are iOS-only xcframeworks, so Layer A builds an iOS
+#     triple with the iPhoneOS SDK instead of the host macOS target.
 
 set -euo pipefail
 
@@ -172,7 +174,7 @@ let package = Package(
   targets: [
     .target(
       name: "Consumer",
-      dependencies: [.product(name: "LiteRTLMSwift", package: "LiteRTLM-Swift-fork")]
+      dependencies: [.product(name: "LiteRTLMSwift", package: "LiteRTLM-Swift")]
     )
   ]
 )
@@ -208,7 +210,13 @@ print("LiteRTLMSwift module OK — tag: \(tag), entries: \(entries.count)")
 SWIFT_EOF
 
   set +e
-  swift build 2>&1
+  IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)
+  if [ -n "$IOS_SDK" ]; then
+    swift build --triple arm64-apple-ios17.0 -Xswiftc -sdk -Xswiftc "$IOS_SDK" 2>&1
+  else
+    echo "FAIL: unable to resolve iPhoneOS SDK via xcrun" >&2
+    false
+  fi
   LAYER_A_EXIT=$?
   set -e
 
