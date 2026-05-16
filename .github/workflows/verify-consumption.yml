@@ -1,0 +1,35 @@
+name: verify-consumption
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history + tags for rewrap script
+
+      - name: Select Xcode
+        # Pin to Xcode 16 (latest stable on macos-latest as of 2026-05).
+        # Update this if .tool-versions is added to the repo.
+        run: |
+          XCODE_PATH="/Applications/Xcode_16.app"
+          if [ -d "$XCODE_PATH" ]; then
+            sudo xcode-select -s "$XCODE_PATH"
+          else
+            echo "Xcode_16.app not found; using default Xcode on runner"
+            xcodebuild -version
+          fi
+
+      - name: Install jq
+        run: which jq || brew install jq
+
+      - name: Run verify-consumption.sh
+        run: ./scripts/verify-consumption.sh
