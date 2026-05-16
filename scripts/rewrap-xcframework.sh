@@ -43,7 +43,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 IN_XCF="${IN_XCF:-Frameworks/LiteRTLM.xcframework}"
-OUT_XCF="${IN_XCF%.xcframework}-rewrapped.xcframework"
+# Phase 14-07 fix: outer xcframework name must match its inner framework so
+# CocoaPods's -framework <basename> link flag resolves. Upstream shipped
+# LiteRTLM.xcframework wrapping CLiteRTLM.framework — that mismatch broke
+# the Pod consumer path. SPM tolerated it via binaryTarget(name:) aliasing
+# but CocoaPods has no such aliasing.
+OUT_XCF="$(dirname "$IN_XCF")/CLiteRTLM.xcframework"
 GMCP_OUT="$(dirname "$OUT_XCF")/GemmaModelConstraintProvider.xcframework"
 VERSION="${LITERTLM_VERSION:-0.1.0}"
 BUILD="${LITERTLM_BUILD:-1}"
@@ -193,7 +198,7 @@ fi  # end REGENERATE_ONLY=false block
 echo "==> Zipping xcframeworks for tag $TAG"
 
 # Map xcframework output paths to their names and target names
-declare -a XCF_NAMES=("LiteRTLM-rewrapped.xcframework" "GemmaModelConstraintProvider.xcframework")
+declare -a XCF_NAMES=("CLiteRTLM.xcframework" "GemmaModelConstraintProvider.xcframework")
 declare -a XCF_PATHS=("$OUT_XCF" "$GMCP_OUT")
 declare -a XCF_SWIFT_TARGETS=("LiteRTLMBinary" "GemmaModelConstraintProviderBinary")
 

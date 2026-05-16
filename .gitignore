@@ -7,5 +7,6 @@ DerivedData/
 .netrc
 
 # Rewrap script outputs — regenerable, not vendored from the fork
-Frameworks/LiteRTLM-rewrapped.xcframework/
+Frameworks/CLiteRTLM.xcframework/
 Frameworks/GemmaModelConstraintProvider.xcframework/
+*.xcframework.zip
