@@ -3,7 +3,11 @@ name: release
 on:
   push:
     tags:
-      - 'v*+rewrap.*'
+      # GitHub Actions tag filter globs treat `+` as a metacharacter (one-or-more
+      # of preceding). Escape it via a single-char character class `[+]` so we
+      # match the literal `+` in our SemVer build-metadata tag convention
+      # (v<upstream>+rewrap.<n>). See D-27.
+      - 'v*[+]rewrap.*'
 
 permissions:
   contents: write
